@@ -1,133 +1,145 @@
 #######################################################################
-#######################################################################
 ##                                                                   ##
 ## THIS SCRIPT SHOULD ONLY BE RUN ON A TANIX TX3 BOX RUNNING ARMBIAN ##
 ##                                                                   ##
 #######################################################################
-#######################################################################
-set -o errexit  # Exit script when a command exits with non-zero status
-set -o errtrace # Exit on error inside any functions or sub-shells
-set -o nounset  # Exit script on use of an undefined variable
-set -o pipefail # Return exit status of the last command in the pipe that failed
 
-# ==============================================================================
-# GLOBALS
-# ==============================================================================
+set -o errexit
+set -o errtrace
+set -o nounset
+set -o pipefail
+
 readonly HOSTNAME="homeassistant"
 
-# ==============================================================================
-# SCRIPT LOGIC
-# ==============================================================================
-
-# ------------------------------------------------------------------------------
-# Ensures the hostname of the Pi is correct.
-# ------------------------------------------------------------------------------
 update_hostname() {
-    hostname
-    sudo hostname homeassistant
-    hostname "${HOSTNAME}"
     echo ""
-    echo "O nome do host será alterado na próxima reinicialização para: ${HOSTNAME}"
-    echo ""
-
+    echo "Alterando hostname para: ${HOSTNAME}"
+    hostnamectl set-hostname "${HOSTNAME}"
 }
 
-# ------------------------------------------------------------------------------
-# Installs armbian software
-# ------------------------------------------------------------------------------
-install_armbian-software() {
-  echo ""
-  echo "A instalar Armbian Software..."
-  echo ""
-  armbian-software || :
-}
-
-
-# ------------------------------------------------------------------------------
-# Installs dependences
-# ------------------------------------------------------------------------------
 install_dependences() {
   echo ""
-  echo "A instalar dependencias..."
+  echo "Instalando dependências básicas..."
   echo ""
-  sudo apt-get install \
-  apparmor \
-  jq \
-  wget \
-  curl \
-  udisks2 \
-  libglib2.0-bin \
-  network-manager \
-  dbus \
-  systemd-journal-remote -y
+  apt-get update
+  apt-get install \
+    apparmor \
+    jq \
+    curl \
+    dbus \
+    lsb-release \
+    network-manager \
+    software-properties-common \
+    apt-transport-https \
+    ca-certificates \
+    gnupg \
+    mosquitto mosquitto-clients \
+    python3 python3-pip python3-venv -y
 }
 
-# ------------------------------------------------------------------------------
-# Installs the Docker engine
-# ------------------------------------------------------------------------------
 install_docker() {
   echo ""
-  echo "A instalar Docker..."
+  echo "Instalando Docker..."
   echo ""
   curl -fsSL https://get.docker.com | sh
 }
 
-# ------------------------------------------------------------------------------
-# Install os-agents
-# ------------------------------------------------------------------------------
-install_osagents() {
-  echo ""
-  echo "A instalar os agents..."
-  echo ""
-  wget https://github.com/home-assistant/os-agent/releases/download/1.4.1/os-agent_1.4.1_linux_aarch64.deb
-  sudo dpkg -i os-agent_1.4.1_linux_aarch64.deb
-  systemctl status haos-agent --no-pager
+setup_directories() {
+  echo "Criando diretórios para Docker volumes..."
+  mkdir -p /opt/homeassistant/config
+  mkdir -p /opt/mosquitto/config /opt/mosquitto/data /opt/mosquitto/log
+  mkdir -p /opt/nodered/data
+
+  echo "Criando configuração do Mosquitto..."
+  cat <<EOF > /opt/mosquitto/config/mosquitto.conf
+allow_anonymous false
+password_file /mosquitto/config/password.txt
+persistence true
+persistence_location /mosquitto/data/
+log_dest file /mosquitto/log/mosquitto.log
+EOF
+
+  echo "Criando usuário do MQTT..."
+  mosquitto_passwd -b -c /opt/mosquitto/config/password.txt HAENFASE HAENFASE2025
 }
 
-# ------------------------------------------------------------------------------
-# Installs and starts Hass.io
-# ------------------------------------------------------------------------------
-install_hassio() {
-  echo ""
-  echo "A instalar o Home Assistant..."
-  echo ""
-  apt-get update
-  apt-get install udisks2 wget -y
-  wget https://github.com/home-assistant/supervised-installer/releases/latest/download/homeassistant-supervised.deb
-  sudo BYPASS_OS_CHECK=true
-  sudo dpkg -i homeassistant-supervised.deb
+create_docker_compose() {
+  echo "Criando docker-compose.yml..."
+  cat <<EOF > /opt/docker-compose.yml
+version: '3.7'
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    volumes:
+      - /opt/homeassistant/config:/config
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    network_mode: host
+
+  mosquitto:
+    container_name: mosquitto
+    image: eclipse-mosquitto:latest
+    volumes:
+      - /opt/mosquitto/config:/mosquitto/config
+      - /opt/mosquitto/data:/mosquitto/data
+      - /opt/mosquitto/log:/mosquitto/log
+    restart: unless-stopped
+    network_mode: host
+
+  nodered:
+    container_name: nodered
+    image: nodered/node-red:latest
+    user: "0:0"
+    volumes:
+      - /opt/nodered/data:/data
+    restart: unless-stopped
+    network_mode: host
+EOF
 }
 
-# ==============================================================================
-# RUN LOGIC
-# ------------------------------------------------------------------------------
+install_python_yolo() {
+  echo "Instalando Python + ambiente virtual para YOLOv8..."
+  mkdir -p /opt/yolo-env
+  python3 -m venv /opt/yolo-env
+  source /opt/yolo-env/bin/activate
+  pip install --upgrade pip
+  pip install ultralytics opencv-python numpy requests paho-mqtt imutils schedule
+  deactivate
+}
+
+start_containers() {
+  echo "Iniciando containers com Docker Compose..."
+  cd /opt
+  docker compose up -d
+}
+
 main() {
-  # Are we root?
   if [[ $EUID -ne 0 ]]; then
-    echo "This script must be run as root."
-    echo "Please try again after running:"
+    echo "Este script deve ser executado como root. Rode:"
     echo "  sudo su"
     exit 1
   fi
 
-  # Install ALL THE THINGS!
   update_hostname
-  install_armbian-software
   install_dependences
   install_docker
-  install_osagents
-  install_hassio
+  setup_directories
+  create_docker_compose
+  install_python_yolo
+  start_containers
 
-  # Friendly closing message
   ip_addr=$(hostname -I | cut -d ' ' -f1)
+  echo ""
   echo "======================================================================="
-  echo "Hass.io está agora a instalar o Home Assistant."
-  echo "Este processo demora a volta de  20 minutes. Abre o seguinte link:"
-  echo "http://${HOSTNAME}.local:8123/ no teu browser"
-  echo "para carregar o home assistant."
-  echo "Se o link acima não funcionar, tenta o seguinte link http://${ip_addr}:8123/"
-  echo "Aproveita o teu home assistant :)"
-
-  exit 0
+  echo "Home Assistant, Mosquitto (MQTT), Node-RED e YOLOv8 agora estão prontos!"
+  echo "Acesse o Home Assistant em: http://${HOSTNAME}.local:8123 ou http://${ip_addr}:8123"
+  echo "Node-RED: http://${ip_addr}:1880"
+  echo "MQTT está pronto para uso com:"
+  echo "  Usuário: HAENFASE"
+  echo "  Senha:   HAENFASE2025"
+  echo "YOLOv8 está disponível em: /opt/yolo-env (use source bin/activate para ativar)"
+  echo "======================================================================="
 }
+
 main
