@@ -22,7 +22,7 @@ install_dependences() {
   echo "Instalando dependências básicas..."
   echo ""
   apt-get update
-  apt-get install \
+  apt-get install -y \
     apparmor \
     jq \
     curl \
@@ -33,8 +33,11 @@ install_dependences() {
     apt-transport-https \
     ca-certificates \
     gnupg \
-    mosquitto mosquitto-clients \
-    python3 python3-pip python3-venv -y
+    mosquitto \
+    mosquitto-clients \
+    python3 \
+    python3-pip \
+    python3-venv
 }
 
 install_docker() {
