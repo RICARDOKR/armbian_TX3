@@ -1,3 +1,4 @@
+#!/bin/bash
 #######################################################################
 ##                                                                   ##
 ## THIS SCRIPT SHOULD ONLY BE RUN ON A TANIX TX3 BOX RUNNING ARMBIAN ##
