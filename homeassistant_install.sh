@@ -1,7 +1,8 @@
 #!/bin/bash
 #######################################################################
 ##                                                                   ##
-## THIS SCRIPT SHOULD ONLY BE RUN ON A TANIX TX3 BOX RUNNING ARMBIAN ##
+## INSTALADOR COMPLETO PARA HOME ASSISTANT SUPERVISED + ECOSSISTEMA ##
+## FEITO PARA TANIX TX3 COM ARMBIAN (aarch64)                        ##
 ##                                                                   ##
 #######################################################################
 
@@ -13,15 +14,12 @@ set -o pipefail
 readonly HOSTNAME="homeassistant"
 
 update_hostname() {
-    echo ""
     echo "Alterando hostname para: ${HOSTNAME}"
     hostnamectl set-hostname "${HOSTNAME}"
 }
 
-install_dependences() {
-  echo ""
+install_dependencies() {
   echo "Instalando dependências básicas..."
-  echo ""
   apt-get update
   apt-get install -y \
     apparmor \
@@ -34,6 +32,11 @@ install_dependences() {
     apt-transport-https \
     ca-certificates \
     gnupg \
+    udisks2 \
+    wget \
+    systemd-journal-remote \
+    systemd-resolved \
+    avahi-daemon \
     mosquitto \
     mosquitto-clients \
     python3 \
@@ -42,15 +45,30 @@ install_dependences() {
 }
 
 install_docker() {
-  echo ""
   echo "Instalando Docker..."
-  echo ""
   curl -fsSL https://get.docker.com | sh
 }
 
+install_os_agent() {
+  echo "Instalando os-agent..."
+  ARCH=$(uname -m)
+  if [[ "$ARCH" == "aarch64" ]]; then
+    wget https://github.com/home-assistant/os-agent/releases/latest/download/os-agent_1.6.0_linux_aarch64.deb
+    dpkg -i os-agent_1.6.0_linux_aarch64.deb || apt --fix-broken install -y
+  else
+    echo "Arquitetura não suportada para os-agent: $ARCH"
+    exit 1
+  fi
+}
+
+install_supervised() {
+  echo "Instalando Home Assistant Supervised..."
+  wget https://github.com/home-assistant/supervised-installer/releases/latest/download/homeassistant-supervised.deb
+  dpkg -i homeassistant-supervised.deb || apt --fix-broken install -y
+}
+
 setup_directories() {
-  echo "Criando diretórios para Docker volumes..."
-  mkdir -p /opt/homeassistant/config
+  echo "Criando diretórios para Mosquitto e Node-RED..."
   mkdir -p /opt/mosquitto/config /opt/mosquitto/data /opt/mosquitto/log
   mkdir -p /opt/nodered/data
 
@@ -63,47 +81,26 @@ persistence_location /mosquitto/data/
 log_dest file /mosquitto/log/mosquitto.log
 EOF
 
-  echo "Criando usuário do MQTT..."
+  echo "Criando usuário MQTT..."
   mosquitto_passwd -b -c /opt/mosquitto/config/password.txt HAENFASE HAENFASE2025
 }
 
-create_docker_compose() {
-  echo "Criando docker-compose.yml..."
-  cat <<EOF > /opt/docker-compose.yml
-version: '3.7'
-services:
-  homeassistant:
-    container_name: homeassistant
-    image: ghcr.io/home-assistant/home-assistant:stable
-    volumes:
-      - /opt/homeassistant/config:/config
-      - /etc/localtime:/etc/localtime:ro
-    restart: unless-stopped
-    network_mode: host
+create_docker_services() {
+  echo "Criando containers adicionais: Mosquitto e Node-RED..."
+  
+  docker run -d --restart unless-stopped --network host \
+    -v /opt/mosquitto/config:/mosquitto/config \
+    -v /opt/mosquitto/data:/mosquitto/data \
+    -v /opt/mosquitto/log:/mosquitto/log \
+    --name mosquitto eclipse-mosquitto:latest
 
-  mosquitto:
-    container_name: mosquitto
-    image: eclipse-mosquitto:latest
-    volumes:
-      - /opt/mosquitto/config:/mosquitto/config
-      - /opt/mosquitto/data:/mosquitto/data
-      - /opt/mosquitto/log:/mosquitto/log
-    restart: unless-stopped
-    network_mode: host
-
-  nodered:
-    container_name: nodered
-    image: nodered/node-red:latest
-    user: "0:0"
-    volumes:
-      - /opt/nodered/data:/data
-    restart: unless-stopped
-    network_mode: host
-EOF
+  docker run -d --restart unless-stopped --network host \
+    -v /opt/nodered/data:/data \
+    --name nodered nodered/node-red:latest
 }
 
 install_python_yolo() {
-  echo "Instalando Python + ambiente virtual para YOLOv8..."
+  echo "Instalando ambiente virtual para YOLOv8..."
   mkdir -p /opt/yolo-env
   python3 -m venv /opt/yolo-env
   source /opt/yolo-env/bin/activate
@@ -112,37 +109,31 @@ install_python_yolo() {
   deactivate
 }
 
-start_containers() {
-  echo "Iniciando containers com Docker Compose..."
-  cd /opt
-  docker compose up -d
-}
-
 main() {
   if [[ $EUID -ne 0 ]]; then
-    echo "Este script deve ser executado como root. Rode:"
-    echo "  sudo su"
+    echo "Este script deve ser executado como root"
     exit 1
   fi
 
   update_hostname
-  install_dependences
+  install_dependencies
   install_docker
+  install_os_agent
+  install_supervised
   setup_directories
-  create_docker_compose
+  create_docker_services
   install_python_yolo
-  start_containers
 
   ip_addr=$(hostname -I | cut -d ' ' -f1)
   echo ""
   echo "======================================================================="
-  echo "Home Assistant, Mosquitto (MQTT), Node-RED e YOLOv8 agora estão prontos!"
-  echo "Acesse o Home Assistant em: http://${HOSTNAME}.local:8123 ou http://${ip_addr}:8123"
+  echo "✅ Ambiente instalado com sucesso!"
+  echo "Home Assistant Supervised: http://${HOSTNAME}.local:8123 ou http://${ip_addr}:8123"
   echo "Node-RED: http://${ip_addr}:1880"
-  echo "MQTT está pronto para uso com:"
+  echo "MQTT em funcionamento com:"
   echo "  Usuário: HAENFASE"
   echo "  Senha:   HAENFASE2025"
-  echo "YOLOv8 está disponível em: /opt/yolo-env (use source bin/activate para ativar)"
+  echo "YOLOv8 disponível em: /opt/yolo-env (use 'source bin/activate')"
   echo "======================================================================="
 }
 
