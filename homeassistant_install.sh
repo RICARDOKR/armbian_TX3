@@ -117,7 +117,6 @@ else
     warn "Arquivo /boot/armbianEnv.txt não encontrado. Pulando configuração CMA."
 fi
 
-
 # Configurar swap para YOLO (reduzido para 1GB devido às limitações do TX3)
 if [ ! -f /swapfile ]; then
     log "💾 Configurando swap de 1GB..."
@@ -130,47 +129,34 @@ if [ ! -f /swapfile ]; then
     fi
     log "✅ Swap configurado"
 fi
-echo "[INFO] Instalando Docker e Docker Compose Plugin V2..."
 
-# Atualiza pacotes
-apt update && apt upgrade -y
+# 4. Instalar Docker
+log "🐳 Instalando Docker..."
+if ! command -v docker &> /dev/null; then
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sh get-docker.sh
+    rm get-docker.sh
+    
+    # Adicionar usuário ao grupo docker
+    usermod -aG docker $REAL_USER
+    systemctl enable docker
+    systemctl start docker
+    log "✅ Docker instalado e configurado"
+else
+    log "✅ Docker já está instalado"
+fi
 
-# Instala dependências
-apt install -y \
-    ca-certificates \
-    curl \
-    gnupg \
-    lsb-release \
-    software-properties-common
-
-# Adiciona chave GPG do Docker
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-chmod a+r /etc/apt/keyrings/docker.gpg
-
-# Adiciona repositório do Docker
-ARCH=$(dpkg --print-architecture)
-echo \
-  "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
-  $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Atualiza e instala Docker Engine + CLI + Containerd + plugin Compose
-apt update
-apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-# Habilita e inicia o serviço Docker
-systemctl enable docker
-systemctl start docker
-
-# Verifica instalação
-docker --version
-docker compose version
-
-# Remove docker-compose legado se existir
-pip uninstall -y docker-compose || true
-
-echo "[OK] Docker e Docker Compose (V2) instalados com sucesso!"
-
+# 5. Instalar Docker Compose
+log "🔧 Instalando Docker Compose..."
+if ! command -v docker-compose &> /dev/null; then
+    # Usar versão binária para ARM64
+    DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d\" -f4)
+    curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    log "✅ Docker Compose instalado"
+else
+    log "✅ Docker Compose já está instalado"
+fi
 
 # 6. Criar diretórios para os serviços
 log "📁 Criando estrutura de diretórios..."
