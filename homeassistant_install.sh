@@ -315,7 +315,7 @@ pip install \
 
 # Instalar ultralytics por último com versão específica
 log "📦 Instalando Ultralytics YOLOv8..."
-pip install "ultralytics>=8.0.0,<9.0.0"
+pip install ultralytics==8.3.102
 
 # Verificar instalação
 if python -c "from ultralytics import YOLO; print('✅ YOLO importado com sucesso')" 2>/dev/null; then
@@ -659,12 +659,12 @@ python -m pip install --upgrade pip setuptools wheel
 # Instalar dependências específicas para Ubuntu Jammy/ARM64
 if [[ "$OS_INFO" == *"Ubuntu"* && "$OS_INFO" == *"22.04"* ]]; then
     echo "🎯 Instalação otimizada para Ubuntu Jammy ARM64"
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-    pip install "numpy>=1.21,<1.25" "opencv-python-headless>=4.8.0,<4.9.0" 
+    pip install torch==2.6.0 torchvision==0.21.0 torchaudio --index-url https://download.pytorch.org/whl/cpu
+    pip install "numpy==1.23.5" "opencv-python==4.11.0.86"
 else
     echo "🎯 Instalação genérica ARM64"
-    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-    pip install "numpy<1.25" "opencv-python-headless==4.8.*"
+    pip install torch==2.6.0 torchvision==0.21.0 torchaudio --index-url https://download.pytorch.org/whl/cpu
+    pip install "numpy==1.23.5" "opencv-python==4.11.0.86"
 fi
 
 pip install pillow paho-mqtt requests matplotlib scipy
