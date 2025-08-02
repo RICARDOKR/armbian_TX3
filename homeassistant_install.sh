@@ -2,8 +2,8 @@
 #######################################################################
 ##                                                                   ##
 ## INSTALADOR MELHORADO PARA HOME ASSISTANT SUPERVISED + ECOSSISTEMA ##
-## VERSÃO ATUALIZADA COM CORREÇÕES DE SEGURANÇA                      ##
-##                                                                   ##
+## VERSÃO ATUALIZADA COM CORREÇÕES DE SEGURANÇA FEITO 02/08          ##
+##  Armbian_community_25.8.0-trunk.411_Aml-s9xx-box_bookworm_current_6.12.40 (1).img   ##
 #######################################################################
 
 set -o errexit
