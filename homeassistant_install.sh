@@ -170,14 +170,34 @@ setup_directories() {
     mkdir -p /opt/mosquitto/config /opt/mosquitto/data /opt/mosquitto/log
     mkdir -p /opt/nodered/data
 
-    log "Criando configuração do Mosquitto..."
+    log "Criando configuração otimizada do Mosquitto para ARM64..."
     cat <<EOF > /opt/mosquitto/config/mosquitto.conf
+# Configuração otimizada para S905X3 (ARM64)
 allow_anonymous false
 password_file /mosquitto/config/password.txt
 persistence true
 persistence_location /mosquitto/data/
 log_dest file /mosquitto/log/mosquitto.log
+log_type error
+log_type warning
+log_type notice
+log_type information
+
+# Otimizações para baixo consumo de recursos
 listener 1883
+protocol mqtt
+max_connections 100
+max_queued_messages 200
+message_size_limit 1024
+
+# Otimizações de memória
+persistent_client_expiration 1d
+max_inflight_messages 10
+max_queued_messages 100
+
+# WebSocket para Node-RED (opcional)
+listener 9001
+protocol websockets
 EOF
 
     log "Gerando credenciais MQTT seguras..."
@@ -190,25 +210,82 @@ EOF
     # Salvar credenciais para o usuário
     echo "MQTT_USER=$MQTT_USER" > /root/mqtt_credentials.txt
     echo "MQTT_PASS=$MQTT_PASS" >> /root/mqtt_credentials.txt
+    
+    # Criar configuração inicial Node-RED otimizada
+    log "Criando configuração inicial Node-RED..."
+    cat <<EOF > /opt/nodered/data/settings.js
+module.exports = {
+    // Otimizações para ARM64/S905X3
+    uiPort: process.env.PORT || 1880,
+    mqttReconnectTime: 15000,
+    serialReconnectTime: 15000,
+    debugMaxLength: 1000,
+    
+    // Configurações de memória otimizadas
+    contextStorage: {
+        default: "memoryOnly",
+        memoryOnly: { module: 'memory' },
+        file: { module: 'localfilesystem' }
+    },
+    
+    // Funcionalidades
+    functionGlobalContext: {
+        os:require('os'),
+    },
+    
+    // Editor settings
+    editorTheme: {
+        projects: { enabled: false },
+        palette: { editable: true }
+    },
+    
+    // Logging otimizado
+    logging: {
+        console: {
+            level: "info",
+            metrics: false,
+            audit: false
+        }
+    }
+}
+EOF
 }
 
 create_docker_services() {
     log "Removendo containers antigos se existirem..."
     docker rm -f mosquitto nodered 2>/dev/null || true
     
-    log "Criando container Mosquitto..."
+    log "Criando container Mosquitto otimizado para ARM64..."
     docker run -d --restart unless-stopped \
         -p 1883:1883 \
         -v /opt/mosquitto/config:/mosquitto/config \
         -v /opt/mosquitto/data:/mosquitto/data \
         -v /opt/mosquitto/log:/mosquitto/log \
+        --memory=128m \
+        --cpus=0.5 \
         --name mosquitto eclipse-mosquitto:latest
 
-    log "Criando container Node-RED..."
+    log "Criando container Node-RED otimizado para ARM64..."
     docker run -d --restart unless-stopped \
         -p 1880:1880 \
         -v /opt/nodered/data:/data \
+        --memory=256m \
+        --cpus=1.0 \
+        -e NODE_OPTIONS="--max_old_space_size=256" \
+        -e FLOWS="flows.json" \
         --name nodered nodered/node-red:latest
+    
+    log "Aguardando containers iniciarem..."
+    sleep 10
+    
+    # Instalar nodes úteis no Node-RED para HA + YOLOv8
+    log "Instalando nodes adicionais no Node-RED..."
+    docker exec nodered npm install \
+        node-red-contrib-home-assistant-websocket \
+        node-red-contrib-mqtt-broker \
+        node-red-node-base64 \
+        node-red-contrib-image-output \
+        node-red-contrib-python3-function 2>/dev/null || log "Alguns nodes podem falhar - normal"
 }
 
 install_python_yolo() {
@@ -333,30 +410,45 @@ EOF
 }
 
 create_backup_script() {
-    log "Criando script de backup..."
+    log "Criando script de backup otimizado..."
     cat <<EOF > /opt/backup_ha.sh
 #!/bin/bash
-# Script de backup automático do Home Assistant
+# Script de backup automático otimizado para S905X3
 BACKUP_DIR="/opt/backups"
 DATE=\$(date +%Y%m%d_%H%M%S)
 
 mkdir -p \$BACKUP_DIR
 
-# Backup configuração HA
-tar -czf "\$BACKUP_DIR/ha_config_\$DATE.tar.gz" -C /usr/share/hassio/homeassistant .
+echo "🔄 Iniciando backup otimizado para ARM64..."
+
+# Backup configuração HA (compressão otimizada)
+tar -czf "\$BACKUP_DIR/ha_config_\$DATE.tar.gz" -C /usr/share/hassio/homeassistant . --exclude='*.log' --exclude='*.db-wal' --exclude='*.db-shm'
 
 # Backup Mosquitto
-tar -czf "\$BACKUP_DIR/mosquitto_\$DATE.tar.gz" -C /opt/mosquitto .
+tar -czf "\$BACKUP_DIR/mosquitto_\$DATE.tar.gz" -C /opt/mosquitto . --exclude='log/*'
 
 # Backup Node-RED
 tar -czf "\$BACKUP_DIR/nodered_\$DATE.tar.gz" -C /opt/nodered .
 
-# Manter apenas últimos 7 backups
-find \$BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
+# Backup ambiente YOLOv8 (apenas configurações)
+tar -czf "\$BACKUP_DIR/yolo_config_\$DATE.tar.gz" -C /opt/yolo-env . --exclude='lib/*' --exclude='bin/*'
 
-echo "Backup concluído em: \$BACKUP_DIR"
+# Manter apenas últimos 5 backups (espaço limitado em ARM)
+find \$BACKUP_DIR -name "*.tar.gz" -mtime +5 -delete
+
+# Stats do backup
+BACKUP_SIZE=\$(du -sh \$BACKUP_DIR | cut -f1)
+echo "✅ Backup concluído em: \$BACKUP_DIR"
+echo "📊 Tamanho total dos backups: \$BACKUP_SIZE"
+
+# Log do backup
+echo "\$(date '+%Y-%m-%d %H:%M:%S') - Backup realizado - Tamanho: \$BACKUP_SIZE" >> /var/log/ha_backup.log
 EOF
     chmod +x /opt/backup_ha.sh
+    
+    # Criar cron job para backup automático (semanal)
+    log "Configurando backup automático semanal..."
+    (crontab -l 2>/dev/null; echo "0 2 * * 0 /opt/backup_ha.sh") | crontab -
 }
 
 wait_for_ha() {
@@ -385,6 +477,7 @@ main() {
     update_hostname
     install_dependencies
     install_docker
+    optimize_system_for_s905x3
     install_os_agent
     install_supervised
     setup_directories
@@ -414,14 +507,27 @@ main() {
     echo "   Exemplo: python3 /opt/yolo-env/yolo_example_optimized.py"
     echo "   💡 Performance: ~5-15 FPS com yolov8n modelo nano"
     echo ""
-    echo "💾 Backup: /opt/backup_ha.sh"
+    echo "💾 Backup automático: /opt/backup_ha.sh (executado semanalmente)"
+    echo "📊 Monitor sistema: /opt/monitor_s905x3.sh"
     echo "🔑 Credenciais MQTT: /root/mqtt_credentials.txt"
     echo ""
-    echo "🎯 Dicas de otimização YOLOv8 para S905X3:"
-    echo "   - Use modelo nano (yolov8n.pt) - mais rápido"
-    echo "   - Resolução 320x320 em vez de 640x640"
-    echo "   - Considere TensorFlow Lite para produção"
-    echo "   - OpenCV headless instalado (sem GUI dependencies)"
+    echo "🎯 Otimizações S905X3 aplicadas:"
+    echo "   - CPU governor: ondemand"
+    echo "   - Swap otimizado: 10% swappiness"
+    echo "   - Logs limitados: 100MB máximo"
+    echo "   - Containers com limites de memória"
+    echo "   - Node-RED com nodes HA pré-instalados"
+    echo ""
+    echo "🤖 Dicas de uso YOLOv8 ARM64:"
+    echo "   - Modelo nano: yolov8n.pt (5-15 FPS)"
+    echo "   - Resolução: 320x320 para melhor performance"
+    echo "   - TensorFlow Lite disponível para produção"
+    echo "   - Exemplo otimizado: /opt/yolo-env/yolo_example_optimized.py"
+    echo ""
+    echo "📈 Monitoramento:"
+    echo "   - Sistema: /opt/monitor_s905x3.sh"
+    echo "   - Containers: docker stats"
+    echo "   - Logs: journalctl -f"
     echo ""
     warn "⚠️  Home Assistant Supervised será descontinuado em 2025.12"
     warn "⚠️  Considere migrar para Home Assistant OS"
