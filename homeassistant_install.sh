@@ -2,8 +2,8 @@
 #######################################################################
 ##                                                                   ##
 ## INSTALADOR MELHORADO PARA HOME ASSISTANT SUPERVISED + ECOSSISTEMA ##
-## VERSÃO ATUALIZADA COM CORREÇÕES DE SEGURANÇA FEITO 02/08          ##
-##  Armbian_community_25.8.0-trunk.411_Aml-s9xx-box_bookworm_current_6.12.40 (1).img   ##
+## VERSÃO ATUALIZADA COM CORREÇÕES DE SEGURANÇA FEITO 03/08          ##
+##  					Armbian  bullseye 6.1.						 ##
 #######################################################################
 
 set -o errexit
@@ -14,13 +14,13 @@ set -o pipefail
 readonly HOSTNAME="homeassistant"
 
 # Cores para output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+RED=\'\\033[0;31m\'
+GREEN=\'\\033[0;32m\'
+YELLOW=\'\\033[1;33m\'
+NC=\'\\033[0m\' # No Color
 
 log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
+    echo -e "${GREEN}[$(date +\'%Y-%m-%d %H:%M:%S\')] $1${NC}"
 }
 
 warn() {
@@ -41,11 +41,22 @@ check_root() {
 check_system_compatibility() {
     log "Verificando compatibilidade do sistema..."
     
-    # Verificar arquitetura
-    ARCH=$(uname -m)
-    if [[ "$ARCH" != "aarch64" ]]; then
-        warn "Arquitetura detectada: $ARCH"
-        warn "Este script foi otimizado para ARM64/aarch64"
+    # Verificar distribuição e versão do kernel
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        if [[ "$ID" == "armbian" && "$VERSION_CODENAME" == "bullseye" ]]; then
+            log "✅ Distribuição detectada: Armbian Bullseye"
+            KERNEL_VERSION=$(uname -r)
+            if [[ "$KERNEL_VERSION" == "6.1."* ]]; then
+                log "✅ Kernel detectado: ${KERNEL_VERSION} (compatível com 6.1.x)"
+            else
+                warn "⚠️  Kernel detectado: ${KERNEL_VERSION} - Este script foi otimizado para kernel 6.1.x"
+            fi
+        else
+            warn "⚠️  Distribuição detectada: $ID $VERSION_CODENAME - Este script foi otimizado para Armbian Bullseye"
+        fi
+    else
+        warn "⚠️  Não foi possível detectar a distribuição do sistema."
     fi
     
     # Verificar SoC (se possível)
@@ -54,12 +65,12 @@ check_system_compatibility() {
         if [[ "$SOC" == "amlogic,s905x3" ]]; then
             log "✅ S905X3 detectado - otimizações ARM64 ativadas"
         else
-            log "SoC: $(cat /proc/device-tree/compatible | tr '\0' ' ')"
+            log "SoC: $(cat /proc/device-tree/compatible | tr \'\\0\' \' \')"
         fi
     fi
     
     # Verificar RAM disponível
-    RAM_GB=$(free -g | awk '/^Mem:/{print $2}')
+    RAM_GB=$(free -g | awk \'/^Mem:/{print $2}\')
     if [[ $RAM_GB -lt 2 ]]; then
         warn "⚠️  RAM disponível: ${RAM_GB}GB - Recomendado: 2GB+ para YOLOv8"
         warn "⚠️  Performance do YOLO pode ser limitada"
@@ -68,7 +79,7 @@ check_system_compatibility() {
     fi
     
     # Verificar espaço em disco
-    DISK_GB=$(df -BG / | awk 'NR==2{gsub(/G/,"",$4); print $4}')
+    DISK_GB=$(df -BG / | awk \'NR==2{gsub(/G/,"",$4); print $4}\')
     if [[ $DISK_GB -lt 8 ]]; then
         warn "⚠️  Espaço livre: ${DISK_GB}GB - Recomendado: 8GB+"
     else
@@ -224,13 +235,13 @@ module.exports = {
     // Configurações de memória otimizadas
     contextStorage: {
         default: "memoryOnly",
-        memoryOnly: { module: 'memory' },
-        file: { module: 'localfilesystem' }
+        memoryOnly: { module: \'memory\' },
+        file: { module: \'localfilesystem\' }
     },
     
     // Funcionalidades
     functionGlobalContext: {
-        os:require('os'),
+        os:require(\'os\'),
     },
     
     // Editor settings
@@ -325,7 +336,7 @@ install_python_yolo() {
 source /opt/yolo-env/bin/activate
 echo "🤖 Ambiente YOLOv8 ARM64 ativado"
 echo "💡 Para melhor performance:"
-echo "   - Use modelo nano: YOLO('yolov8n.pt')"
+echo "   - Use modelo nano: YOLO(\'yolov8n.pt\')"
 echo "   - Resolução baixa: imgsz=320"
 echo "   - Considere TensorFlow Lite para produção"
 EOF
@@ -347,16 +358,16 @@ import numpy as np
 def main():
     # Usar modelo nano (mais rápido)
     print("🔄 Carregando YOLOv8 nano...")
-    model = YOLO('yolov8n.pt')  # Baixa automaticamente na primeira vez
+    model = YOLO(\'yolov8n.pt\')  # Baixa automaticamente na primeira vez
     
     # Configurações otimizadas para ARM64
-    model.overrides['imgsz'] = 320  # Resolução menor = mais rápido
-    model.overrides['conf'] = 0.5   # Confiança mínima
-    model.overrides['iou'] = 0.7    # IoU threshold
+    model.overrides[\'imgsz\'] = 320  # Resolução menor = mais rápido
+    model.overrides[\'conf\'] = 0.5   # Confiança mínima
+    model.overrides[\'iou\'] = 0.7    # IoU threshold
     
     # Teste com webcam ou arquivo
     cap = cv2.VideoCapture(0)  # Webcam
-    # cap = cv2.VideoCapture('video.mp4')  # Arquivo
+    # cap = cv2.VideoCapture(\'video.mp4\')  # Arquivo
     
     if not cap.isOpened():
         print("❌ Erro ao abrir câmera/vídeo")
@@ -369,7 +380,7 @@ def main():
     fps_counter = 0
     start_time = time.time()
     
-    print("🚀 Iniciando detecção... (Pressione 'q' para sair)")
+    print("🚀 Iniciando detecção... (Pressione \'q\' para sair)")
     
     while True:
         ret, frame = cap.read()
@@ -391,9 +402,9 @@ def main():
             start_time = time.time()
         
         # Mostrar frame
-        cv2.imshow('YOLOv8 ARM64 Optimized', annotated_frame)
+        cv2.imshow(\'YOLOv8 ARM64 Optimized\', annotated_frame)
         
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) & 0xFF == ord(\'q\'):
             break
     
     cap.release()
@@ -415,34 +426,34 @@ create_backup_script() {
 #!/bin/bash
 # Script de backup automático otimizado para S905X3
 BACKUP_DIR="/opt/backups"
-DATE=\$(date +%Y%m%d_%H%M%S)
+DATE=\\$(date +%Y%m%d_%H%M%S)
 
-mkdir -p \$BACKUP_DIR
+mkdir -p \\$BACKUP_DIR
 
 echo "🔄 Iniciando backup otimizado para ARM64..."
 
 # Backup configuração HA (compressão otimizada)
-tar -czf "\$BACKUP_DIR/ha_config_\$DATE.tar.gz" -C /usr/share/hassio/homeassistant . --exclude='*.log' --exclude='*.db-wal' --exclude='*.db-shm'
+tar -czf "\\$BACKUP_DIR/ha_config_\\$DATE.tar.gz" -C /usr/share/hassio/homeassistant . --exclude=\'*.log\' --exclude=\'*.db-wal\' --exclude=\'*.db-shm\'
 
 # Backup Mosquitto
-tar -czf "\$BACKUP_DIR/mosquitto_\$DATE.tar.gz" -C /opt/mosquitto . --exclude='log/*'
+tar -czf "\\$BACKUP_DIR/mosquitto_\\$DATE.tar.gz" -C /opt/mosquitto . --exclude=\'log/*\'
 
 # Backup Node-RED
-tar -czf "\$BACKUP_DIR/nodered_\$DATE.tar.gz" -C /opt/nodered .
+tar -czf "\\$BACKUP_DIR/nodered_\\$DATE.tar.gz" -C /opt/nodered .
 
 # Backup ambiente YOLOv8 (apenas configurações)
-tar -czf "\$BACKUP_DIR/yolo_config_\$DATE.tar.gz" -C /opt/yolo-env . --exclude='lib/*' --exclude='bin/*'
+tar -czf "\\$BACKUP_DIR/yolo_config_\\$DATE.tar.gz" -C /opt/yolo-env . --exclude=\'lib/*\' --exclude=\'bin/*\'
 
 # Manter apenas últimos 5 backups (espaço limitado em ARM)
-find \$BACKUP_DIR -name "*.tar.gz" -mtime +5 -delete
+find \\$BACKUP_DIR -name "*.tar.gz" -mtime +5 -delete
 
 # Stats do backup
-BACKUP_SIZE=\$(du -sh \$BACKUP_DIR | cut -f1)
-echo "✅ Backup concluído em: \$BACKUP_DIR"
-echo "📊 Tamanho total dos backups: \$BACKUP_SIZE"
+BACKUP_SIZE=\\$(du -sh \\$BACKUP_DIR | cut -f1)
+echo "✅ Backup concluído em: \\$BACKUP_DIR"
+echo "📊 Tamanho total dos backups: \\$BACKUP_SIZE"
 
 # Log do backup
-echo "\$(date '+%Y-%m-%d %H:%M:%S') - Backup realizado - Tamanho: \$BACKUP_SIZE" >> /var/log/ha_backup.log
+echo "\\$(date \'+%Y-%m-%d %H:%M:%S\') - Backup realizado - Tamanho: \\$BACKUP_SIZE" >> /var/log/ha_backup.log
 EOF
     chmod +x /opt/backup_ha.sh
     
@@ -463,6 +474,21 @@ wait_for_ha() {
     done
 }
 
+optimize_system_for_s905x3() {
+    log "Aplicando otimizações de sistema para S905X3..."
+    # CPU governor: ondemand
+    echo "ondemand" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+    
+    # Swap otimizado: 10% swappiness
+    sysctl vm.swappiness=10
+    echo "vm.swappiness=10" >> /etc/sysctl.conf
+    
+    # Logs limitados: 100MB máximo
+    journalctl --vacuum-size=100M
+    
+    log "✅ Otimizações de sistema aplicadas."
+}
+
 main() {
     check_root
     check_system_compatibility
@@ -474,10 +500,10 @@ main() {
     
     log "Iniciando instalação do Home Assistant Supervised otimizado para ARM64..."
     
+    optimize_system_for_s905x3
     update_hostname
     install_dependencies
     install_docker
-    optimize_system_for_s905x3
     install_os_agent
     install_supervised
     setup_directories
@@ -488,7 +514,7 @@ main() {
     wait_for_ha
     
     # Obter informações do sistema
-    ip_addr=$(hostname -I | cut -d ' ' -f1)
+    ip_addr=$(hostname -I | cut -d \' \' -f1)
     mqtt_user=$(grep MQTT_USER /root/mqtt_credentials.txt | cut -d= -f2)
     mqtt_pass=$(grep MQTT_PASS /root/mqtt_credentials.txt | cut -d= -f2)
     
@@ -535,3 +561,4 @@ main() {
 }
 
 main "$@"
+
