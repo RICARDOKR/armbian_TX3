@@ -3,7 +3,7 @@
 ##                                                                   ##
 ## INSTALADOR MELHORADO PARA HOME ASSISTANT SUPERVISED + ECOSSISTEMA ##
 ## VERSÃO ATUALIZADA COM CORREÇÕES DE SEGURANÇA FEITO 03/08          ##
-##                Armbian  bullseye 6.1.                             ##
+## Armbian  bullseye 6.1.                             ##
 #######################################################################
 
 set -o errexit
@@ -561,6 +561,7 @@ main() {
 }
 
 main "$@"
+
 
 
 
